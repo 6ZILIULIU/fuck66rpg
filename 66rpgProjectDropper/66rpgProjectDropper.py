@@ -8,8 +8,11 @@ import datetime
 import hashlib
 import hmac
 
+import unicodedata
 
-gameLink = input('请输入游戏链接、gindex 或 guid\n如 66rpg.com/game/17893、17893、或 5a9c559b69d8df96c2f7788ff6899133：\n')
+
+gameLink = input(
+    '请输入游戏链接、gindex 或 guid\n如 66rpg.com/game/17893、17893、或 5a9c559b69d8df96c2f7788ff6899133：\n')
 print('正在获取版本信息...')
 
 
@@ -38,17 +41,21 @@ else:
 
 # 通过guid获取 gindex ver name uid create_time
 # http://www.66rpg.com/api/common/versions?guid=$guid$
-body = http.request('GET', 'http://www.66rpg.com/api/common/versions?guid=' + guid).data
+body = http.request(
+    'GET', 'http://www.66rpg.com/api/common/versions?guid=' + guid).data
 jsonLoads = json.loads(body)
 uid = str(jsonLoads['data'][-1]['uid'])
 for n in range(len(jsonLoads['data'])):
-    print('版本：' + str(jsonLoads['data'][n]['version']) + '  创建时间：' + str(jsonLoads['data'][n]['create_time']))
+    print('版本：' + str(jsonLoads['data'][n]['version']) +
+          '  创建时间：' + str(jsonLoads['data'][n]['create_time']))
 gameName = str(jsonLoads['data'][-1]['name'])
+gameName = gindex + '_' + gameName
 print(gameName + '  ' + guid)
 latestVer = str(jsonLoads['data'][-1]['version'])
-ver = input('请输入要下载的版本号，默认下载 ' + latestVer + '：\n')
-if ver == '':
-    ver = latestVer
+# ver = input('请输入要下载的版本号，默认下载 ' + latestVer + '：\n')
+# if ver == '':
+#     ver = latestVer
+ver = latestVer
 print('正在获取文件列表...')
 print('准备下载：' + gameName + '  版本' + ver)
 
@@ -63,27 +70,35 @@ MD5 = []
 # Map.bin以「?? ?? 00 00 0D 00 00 00」开头，文件名与MD5以「?? ?? ?? 00 20 00 00 00」分隔，每行之间以「?? 00 00 00」分隔
 # 文件大致为「?? ?? 00 00 0D 00 00 00 文件名_1 ?? ?? ?? 00 20 00 00 00 MD5_1 ?? 00 00 00 文件名_2.....」编码UTF-8
 # 先分前者再分后者
-mapBin = http.request('GET', 'http://wcdn1.cgyouxi.com/web/' + guid + '/' + ver + '/Map.bin').data
+mapBin = http.request('GET', 'http://wcdn1.cgyouxi.com/web/' +
+                      guid + '/' + ver + '/Map.bin').data
 # print('http://wcdn1.cgyouxi.com/web/' + guid + '/' + ver + '/Map.bin')
 mapbinHex = base64.b16encode(mapBin).decode()
 mapbinHex = mapbinHex[16:]  # 切掉文件头
+mapbinHex = mapbinHex[:26] + "0D0A" + mapbinHex[42:]  # 切掉文件头
 # 分割文件名和MD5，并保证后半部分剩余的hex不是奇数。否则 X[X XX XX X0 02 00 00 00 0]X 会匹配错误
 mapbinHex = re.sub('......0020000000(?!.(..)*$)', '0D0A', mapbinHex)
-mapbinHex = re.sub('..000000(?!.(..)*$)', '0D0A', mapbinHex)  # 分割行，并保证后半部分剩余的hex数据不是奇数。理由同上。
+# 分割行，并保证后半部分剩余的hex数据不是奇数。理由同上。
+mapbinHex = re.sub('..000000(?!.(..)*$)', '0D0A', mapbinHex)
+
 mapbinUTF8 = base64.b16decode(mapbinHex.encode()).decode('UTF-8')
 mapbinUTF8 = str.split(mapbinUTF8, '\r\n')
+# print('mapbinHex 1',mapbinUTF8)
 lowercasefileName = mapbinUTF8[::2]  # 取偶数项
-MD5 = mapbinUTF8[1::2]  # 取奇数项
+MD5 = mapbinUTF8[1::2]   # 取奇数项
 
 # 更正fileName大小写
 fileName = []
 for name in lowercasefileName:
+    if "data/" in name:
+        print(';fileName', name)
     name = name.replace('audio/bgm/', 'Audio/BGM/')
     name = name.replace('audio/se/', 'Audio/SE/')
     name = name.replace('audio/voice/', 'Audio/Voice/')
     name = name.replace('audio/bgs/', 'Audio/BGS/1')
     # name = name.replace('data/game.bin', 'Data/Game.bin')
     name = name.replace('data/game.bin', 'data/Game.bin')
+    name = name.replace('data/project.bin', 'data/Project.bin')
     # name = name.replace('data/map.bin', 'Data/Map.bin')
     name = name.replace('data/map.bin', 'data/Map.bin')
     name = name.replace('font/', 'Font/')
@@ -110,18 +125,38 @@ for a in fileName:
 # 网页客户端的CDN为，似乎都可以使用
 # https://dlcdn1.cgyouxi.com/shareres/$md5前两位$/$md5$
 for i in range(len(fileName)):
-    print(Path(gameName + '/' + fileName[i]), MD5[i])
-    file = http.request('GET', 'http://wcdn1.cgyouxi.com/shareres/' + MD5[i][:2] + '/' + MD5[i]).data
+    # print(Path(gameName + '/' + fileName[i]), MD5[i])
+    file = http.request(
+        'GET', 'http://wcdn1.cgyouxi.com/shareres/' + MD5[i][:2] + '/' + MD5[i]).data
     isExists = os.path.exists(Path(gameName + '/' + filePath[i]))
     if not isExists:  # 判断如果文件不存在,则创建
-        os.makedirs(Path(gameName + '/' + filePath[i]))
-    f = open(Path(gameName + '/' + fileName[i]), mode='wb')
+        os.makedirs(Path(os.path.dirname(__file__) +
+                    '/../download/' + gameName + '/' + filePath[i]))
+    f = open(Path(os.path.dirname(__file__) +
+                  '/../download/' + gameName + '/' + fileName[i]), mode='wb')
     f.write(file)
     f.close()
 
 print('素材文件下载完成')
 
 os._exit(0)
+
+# print('开始解析Game.bin')
+# def remove_non_unicode(text):
+#     return ''.join(c for c in text if unicodedata.category(c)[0] != 'C')
+
+
+# def replace_non_unicode(text):
+#     return ''.join(c if unicodedata.category(c)[0] != 'C' else '|' for c in text)
+
+# with open(Path(gameName+'/'+'data/Game.bin', 'rb')) as f:
+#     binary_data = f.read()
+#     encoding = 'utf-8'
+#     string_data = binary_data.decode(encoding, errors='ignore')
+
+
+# print('完成解析Game.bin')
+
 
 print('准备下载工程文件')
 
@@ -154,7 +189,8 @@ for i in range(11):
         signInvalid = True
         while signInvalid:
             GMT = datetime.datetime.utcnow().strftime(GMT_FORMAT)  # 生成GMT时间
-            signData = 'GET\n\n\n' + GMT + '\n/ouser/' + uid + '/' + guid + '/' + projectfilePath
+            signData = 'GET\n\n\n' + GMT + '\n/ouser/' + \
+                uid + '/' + guid + '/' + projectfilePath
             # 计算HMACsign
             key = bytes(ACCESS_SECRET, 'UTF-8')
             message = bytes(signData, 'UTF-8')
